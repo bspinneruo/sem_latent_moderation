@@ -1,0 +1,510 @@
+---
+title: SEM II Final Presentation
+subtitle: Latent Interaction
+author: B Spinner
+date: '`r format(Sys.time(), "%d %B, %Y")`'
+output:
+  html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: true 
+    code_folding: hide
+    theme: cerulean
+--- 
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, message = FALSE)
+```
+
+```{r}
+
+library(haven)
+library(flexdashboard)
+pacman::p_load(haven, flextable, data.table, ggthemes, sandwich, flexdashboard, ggplot2, ggExtra, grid, tidyverse, rio, here, modelsummary, janitor, ggThemeAssist, gghighlight, ggridges)
+
+Latinx <- read_sav(here("data/Latinx Health Behaviors and Health Outcomes dataset_7.14.2020.sav"))
+
+#View(Latinx)
+
+Latinx_sub <- Latinx %>% 
+  select("Age_combine", "Hisp_combine", "Gender_combine", "Household_Income_combine", "RelationshipStatus_combine", "PHQ_1_combine","PHQ_2_combine","PHQ_3_combine", "PHQ_4_combine","PHQ_5_combine","PHQ_6_combine", "PHQ_7_combine","PHQ_8_combine","PHQ_9_combine", "SDQ_1_combine", "SDQ_2_combine", "SDQ_3_combine", "SDQ_4_combine", "SDQ_5_combine", "SDQ_6_combine", "SDQ_7_combine", "SDQ_8_combine", "AMAS_AMERICANculture_1_combine", "AMAS_AMERICANculture_2_combine", "AMAS_AMERICANculture_3_combine", "AMAS_AMERICANculture_4_combine", "AMAS_AMERICANculture_5_combine", "AMAS_AMERICANculture_6_combine", "AMAS_NATIVEculture_7_combine", "AMAS_NATIVEculture_8_combine", "AMAS_NATIVEculture_9_combine", "AMAS_NATIVEculture_10_combine", "AMAS_NATIVEculture_11_combine", "AMAS_NATIVEculture_12_combine")
+
+# Dropped PHQs that weren't reltaed to depression specifically: 3, 
+# Dropped SDQs that weren't in Likert: 1, 2, 6 (maybe 5) 
+Latinx_miss <- Latinx_sub %>% 
+  select("Age_combine", "Household_Income_combine", "PHQ_1_combine","PHQ_2_combine", "PHQ_4_combine","PHQ_5_combine","PHQ_6_combine", "PHQ_7_combine","PHQ_8_combine","PHQ_9_combine", "SDQ_3_combine", "SDQ_4_combine", "SDQ_5_combine", "SDQ_7_combine", "SDQ_8_combine", "AMAS_AMERICANculture_1_combine", "AMAS_AMERICANculture_2_combine", "AMAS_AMERICANculture_3_combine", "AMAS_AMERICANculture_4_combine", "AMAS_AMERICANculture_5_combine", "AMAS_AMERICANculture_6_combine", "AMAS_NATIVEculture_7_combine", "AMAS_NATIVEculture_8_combine", "AMAS_NATIVEculture_9_combine", "AMAS_NATIVEculture_10_combine", "AMAS_NATIVEculture_11_combine", "AMAS_NATIVEculture_12_combine")
+
+
+```
+
+# SEM II Final Project Presentation 
+## Utilizing the Product Indicators Method in testing for the moderating effect of acculturation in the relationship between latent sleep and depression adjusting for age and household income (from SEM I) among Latinx adults in the US. 
+
+## Introduction
+Poor sleep significantly impacts mental and physical health, particularly contributing to conditions like depression, anxiety, and severe psychological distress (SPD). We previously explored how poor sleep/sleep disorders elevated the risk of SPD among a diverse Hispanic/Latino(a) adult population (N = 798). The present study examines how acculturation moderates the relationship between sleep disorders and depression among US Latinx adults. Acculturation stress and ethnic discrimination are associated with poor sleep in Hispanics/Latinos (Alcántara et al., 2017). However, the prevalence and understanding of sleep disorders among US Latinx adults is not well known (Loredo et al., 2010). Using a product indicators method in SEM, we found that the introduction of acculturation as a moderating variable significantly altered the direct effect of sleep on depression, which became non-significant (estimate = 0.031, p = 0.514). The interaction term between sleep disorders and acculturation was significant (estimate = 0.093, p < .001), indicating that the effect of sleep on depression varies across different levels of acculturation (sense of belonging in US).
+
+## Research Question 
+When controlling for covariates, does acculturation moderate the relationship between poor sleep and depression, on average among US Latinx adults?
+
+## Hypothesis
+When controlling for _Age_ and _Household Income_ we predict that Latinx adults in the US with sleep disorders will, on average, have increased symptoms of depression when they are experiencing higher levels of acculturation.  Specifically, when levels of acculturation are high, they will have  higher scores on the sleep disorders questionnaire (SDQ), as level of depression increases (score on the PhQ). 
+
+## Mardia's test for Bivariate relationship 
+## Missingness evaluated usign MCAR test
+There is no significant evidence against the MCAR assumption based on the test performed (p> .05). And data do not meet multivariate normality assumptions according to Mardia's test results (p=0). 
+
+Moving forward in analyses we will be adjusting for levels of missingness using Full Information Maximum Likelihood (FIML) and the Maximum Likelihood Estimation with Robust Standard Errors (“MLR”) to adjust for levels of non-multivariate normality.
+
+```{r}
+library(naniar)
+mcar_test(Latinx_miss)
+
+library(MVN)       
+
+
+mvn(Latinx_miss, mvnTest = "mardia")
+```
+
+### Relationship between latent sleep and depression adjusting for age and household income (from SEM I)
+
+We previously found a significant positive association between poorer sleep and depression among Latinx adults in the US, on average, adjusting for age and household income. 
+
+```{r}
+library(lavaan)
+library(lavaanPlot)
+library(psych)
+
+# dont use SDQ 5 it's negative, SDQ 3 and 4 also such .2 or .3 factor loadings. these questions ask about what you were doing while sleeping. not many of us know. so just a poor measure. 
+
+LVsem <-  ' latent_sleep =~ SDQ_3_combine + SDQ_4_combine + SDQ_7_combine + SDQ_8_combine 
+
+latent_depress =~ PHQ_1_combine + PHQ_2_combine + PHQ_4_combine + PHQ_5_combine +  PHQ_6_combine + PHQ_7_combine + PHQ_8_combine + PHQ_9_combine
+
+latent_depress ~ latent_sleep + Age_combine + Household_Income_combine 
+
+'
+out1 <- sem(LVsem, missing = "fiml", estimator = "MLR", data=Latinx_miss)
+
+summary(out1, stand=TRUE, fit.measures=TRUE)
+
+#modelsummary::modelsummary(out1)
+# library(sandwich)
+# library(clubSandwich)
+omit_rows <- c(1,2,3,4,5,6,7,8,9,10,11, 12,14, 15, 16)
+include_rows <- c("SEM Model Fit")
+modelsummary::modelsummary(list( "SEM Model Fit" = out1),
+                            stars=T,
+              fmt=3,
+             gof_omit = c("Adj.|Log.Lik."),
+             coef_omit = omit_rows, 
+              col_names = include_rows,
+             coef_rename = c("latent_depress ~ latent_sleep" = "LV Depression and LV Sleep",
+                             "latent_depress ~ Age_combine" = "LV Depression and Age",
+                             "latent_depress ~ Household_Income_combine" = "LV Depression and Household Income"),
+                             notes = c("Notes: Table presents coefficients estimated with maximum likelihood estimation with robust standard errors (MLR). Missing values were addressed using Full Information Maximum Likelihood (FIML) estimation."))
+            # output = "figures/model_summary.png")
+#install.packages("webshot2")
+
+lavaanPlot(model=out1, 
+           stand=TRUE, 
+           digits = 3, 
+           coefs=TRUE, 
+           covs=TRUE, 
+           graph_options = list(rankdir = "TB"),  
+           stars=c("regress"))
+
+
+# ggsave("figures/figure_sem.png", plot = fig)
+# export_graph(fig, file = "figures/figure_sem.svg")
+
+
+
+library(semPlot)
+ 
+fig1<-semPaths(out1,                   
+         whatLabels = "stand", 
+         layout = "tree2",
+         rotation = 4,
+         nCharNodes = 0,             
+         edge.width = 2.5,          
+         edge.label.cex = 1,
+         exoCov = FALSE,
+         intercepts=FALSE,           
+         residuals=FALSE,         
+         equalizeManifests = TRUE,  
+         sizeLat=10,                
+         sizeMan=8,
+         unCol = "#070b8c")
+
+
+```
+
+## Fit indices for Bivariate relationship 
+
+```{r}
+### Modified Fit and Rsquare
+fit_indices<-fitMeasures(out1,c("chisq", "df", "pvalue", "cfi", "rmsea"))
+
+
+fit_indices<-as.data.frame(fit_indices)
+#View(fit_indices)
+reportfits<- as.data.frame(t(fit_indices)) # transpose all but the first column (name)
+
+#View(reportfits)
+
+reportfits$chisq_df<-(reportfits[,c('chisq')]/reportfits[,c('df')])
+    
+ 
+reportfits<-as.data.frame(reportfits)
+
+R_Square<-lavInspect(out1,"r-square")
+R_Square<-as.data.frame(R_Square)
+
+reportRsq<- as.data.frame(t(R_Square)) # transpose all but the first column (name)
+#View(reportRsq)
+# 
+# LV_Rsq<-reportRsq %>% 
+#   select(c("out3"))
+
+
+library(kableExtra)
+getOption("digits")
+
+reportfits%>%
+  kbl(col.names = c ("chisq", "df", "pvalue", "cfi", "rmsea", "chisq_df"), digits = 3) %>% 
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+
+```{r, include=FALSE}
+LVsem_accult <-  ' latent_accult =~ AMAS_AMERICANculture_1_combine + AMAS_AMERICANculture_2_combine + AMAS_AMERICANculture_3_combine + AMAS_AMERICANculture_4_combine + AMAS_AMERICANculture_5_combine + AMAS_AMERICANculture_6_combine 
+
+latent_depress =~ PHQ_1_combine + PHQ_2_combine + PHQ_4_combine + PHQ_5_combine +  PHQ_6_combine + PHQ_7_combine + PHQ_8_combine + PHQ_9_combine
+
+latent_depress ~ latent_accult + Age_combine + Household_Income_combine 
+
+'
+out2 <- sem(LVsem_accult, missing = "fiml", estimator = "MLR", data=Latinx_miss)
+
+summary(out2, stand=TRUE, fit.measures=TRUE)
+
+modelsummary::modelsummary(out2)
+# library(sandwich)
+# library(clubSandwich)
+# omit_rows <- c(1,2,3,4,5,6,7,8,9,10,14)
+# include_rows <- c("SEM Model Fit")
+# modelsummary::modelsummary(list( "SEM Model Fit" = out2),
+#                             stars=T,
+#               fmt=3,
+#              gof_omit = c("Adj.|Log.Lik."),
+#              coef_omit = omit_rows, 
+#               col_names = include_rows,
+#              coef_rename = c("latent_depress ~ latent_sleep" = "LV Depression and LV Sleep",
+#                              "latent_depress ~ Age_combine" = "LV Depression and Age",
+#                              "latent_depress ~ Household_Income_combine" = "LV Depression and Household Income"),
+#                              notes = c("Notes: Table presents coefficients estimated with maximum likelihood estimation with robust standard errors (MLR). Missing values were addressed using Full Information Maximum Likelihood (FIML) estimation."))
+#             # output = "figures/model_summary.png")
+# #install.packages("webshot2")
+
+lavaanPlot(model=out2, 
+           stand=TRUE, 
+           digits = 3, 
+           coefs=TRUE, 
+           covs=TRUE, 
+           graph_options = list(rankdir = "TB"),  
+           stars=c("regress"))
+
+
+# ggsave("figures/figure_sem.png", plot = fig)
+# export_graph(fig, file = "figures/figure_sem.svg")
+
+
+
+library(semPlot)
+ 
+fig2<-semPaths(out2,                   
+         whatLabels = "stand", 
+         layout = "tree2",
+         rotation = 4,
+         nCharNodes = 0,             
+         edge.width = 2.5,          
+         edge.label.cex = 1,
+         exoCov = FALSE,
+         intercepts=FALSE,           
+         residuals=FALSE,         
+         equalizeManifests = TRUE,  
+         sizeLat=10,                
+         sizeMan=8,
+         unCol = "#070b8c")
+
+# Latent accult does not significantly predict depression. it does sig predict sleep. 
+```
+
+```{r, include=FALSE}
+LVsem_accult_sleep <-  ' latent_accult =~ AMAS_AMERICANculture_1_combine + AMAS_AMERICANculture_2_combine + AMAS_AMERICANculture_3_combine + AMAS_AMERICANculture_4_combine + AMAS_AMERICANculture_5_combine + AMAS_AMERICANculture_6_combine 
+latent_sleep =~ SDQ_3_combine + SDQ_4_combine + SDQ_7_combine + SDQ_8_combine 
+
+latent_sleep ~ latent_accult + Age_combine + Household_Income_combine '
+
+out3 <- sem(LVsem_accult_sleep, missing = "fiml", estimator = "MLR", data=Latinx_miss)
+
+summary(out3, stand=TRUE, fit.measures=TRUE)
+
+modelsummary::modelsummary(out3)
+# library(sandwich)
+# library(clubSandwich)
+# omit_rows <- c(1,2,3,4,5,6,7,8,9,10,14)
+# include_rows <- c("SEM Model Fit")
+# modelsummary::modelsummary(list( "SEM Model Fit" = out2),
+#                             stars=T,
+#               fmt=3,
+#              gof_omit = c("Adj.|Log.Lik."),
+#              coef_omit = omit_rows, 
+#               col_names = include_rows,
+#              coef_rename = c("latent_depress ~ latent_sleep" = "LV Depression and LV Sleep",
+#                              "latent_depress ~ Age_combine" = "LV Depression and Age",
+#                              "latent_depress ~ Household_Income_combine" = "LV Depression and Household Income"),
+#                              notes = c("Notes: Table presents coefficients estimated with maximum likelihood estimation with robust standard errors (MLR). Missing values were addressed using Full Information Maximum Likelihood (FIML) estimation."))
+#             # output = "figures/model_summary.png")
+# #install.packages("webshot2")
+
+lavaanPlot(model=out3, 
+           stand=TRUE, 
+           digits = 3, 
+           coefs=TRUE, 
+           covs=TRUE, 
+           graph_options = list(rankdir = "TB"),  
+           stars=c("regress"))
+
+
+# ggsave("figures/figure_sem.png", plot = fig)
+# export_graph(fig, file = "figures/figure_sem.svg")
+
+
+
+library(semPlot)
+ 
+fig3<-semPaths(out3,                   
+         whatLabels = "stand", 
+         layout = "tree2",
+         rotation = 4,
+         nCharNodes = 0,             
+         edge.width = 2.5,          
+         edge.label.cex = 1,
+         exoCov = FALSE,
+         intercepts=FALSE,           
+         residuals=FALSE,         
+         equalizeManifests = TRUE,  
+         sizeLat=10,                
+         sizeMan=8,
+         unCol = "#070b8c")
+
+
+```
+
+
+# Product Indicators Method
+## Testing for interaction in bivariate relationship using latent acculturation variable
+
+	•	Acculturation (latent_accult) has a significant negative effect on depression.
+	•	The interaction term (latent_int) shows a significant moderation effect, indicating that the relationship between sleep and depression is influenced by the level of acculturation.
+	•	Age and Household Income both have significant negative effects on depression.
+	•	After the introduction of our moderating variable, Sleep (latent_sleep) no longer has a significant direct effect on depression.
+
+**Conclusion**
+The interaction term (latent_int) being significant indicates that acculturation significantly alters how sleep impacts depression. For instance, sleep might have a stronger or weaker effect on depression at different levels of acculturation. In conclusion, the impact of sleep on depression varies with different levels of acculturation, emphasizing the importance of considering acculturation in the context of mental health research.
+
+```{r}
+library(lavaan)
+library(lavaanPlot)
+library(semTools)
+
+Latinx_miss$Interact1 = Latinx_miss$SDQ_7_combine * Latinx_miss$AMAS_AMERICANculture_1_combine
+Latinx_miss$Interact2 = Latinx_miss$SDQ_8_combine * Latinx_miss$AMAS_AMERICANculture_1_combine
+Latinx_miss$Interact3 = Latinx_miss$SDQ_7_combine * Latinx_miss$AMAS_AMERICANculture_2_combine
+Latinx_miss$Interact4 = Latinx_miss$SDQ_8_combine * Latinx_miss$AMAS_AMERICANculture_2_combine
+Latinx_miss$Interact5 = Latinx_miss$SDQ_7_combine * Latinx_miss$AMAS_AMERICANculture_3_combine
+Latinx_miss$Interact6 = Latinx_miss$SDQ_8_combine * Latinx_miss$AMAS_AMERICANculture_3_combine
+Latinx_miss$Interact7 = Latinx_miss$SDQ_7_combine * Latinx_miss$AMAS_AMERICANculture_4_combine
+Latinx_miss$Interact8 = Latinx_miss$SDQ_8_combine * Latinx_miss$AMAS_AMERICANculture_4_combine
+Latinx_miss$Interact9 = Latinx_miss$SDQ_7_combine * Latinx_miss$AMAS_AMERICANculture_5_combine
+Latinx_miss$Interact10 = Latinx_miss$SDQ_8_combine * Latinx_miss$AMAS_AMERICANculture_5_combine
+Latinx_miss$Interact11 = Latinx_miss$SDQ_7_combine * Latinx_miss$AMAS_AMERICANculture_6_combine
+Latinx_miss$Interact12 = Latinx_miss$SDQ_8_combine * Latinx_miss$AMAS_AMERICANculture_6_combine
+
+Intmod <- "
+
+latent_depress =~ PHQ_1_combine + PHQ_2_combine + PHQ_4_combine + PHQ_5_combine +  PHQ_6_combine + PHQ_7_combine + PHQ_8_combine + PHQ_9_combine
+
+latent_sleep =~ SDQ_7_combine + SDQ_8_combine 
+
+latent_accult =~ AMAS_AMERICANculture_1_combine + AMAS_AMERICANculture_2_combine + AMAS_AMERICANculture_3_combine + AMAS_AMERICANculture_4_combine + AMAS_AMERICANculture_5_combine + AMAS_AMERICANculture_6_combine 
+
+latent_int =~ Interact1 + Interact2 + Interact3 + Interact4 + Interact5 + Interact6 + Interact7 + Interact8 + Interact9 + Interact10 + Interact11 + Interact12
+
+latent_depress ~ latent_sleep + latent_accult + latent_int + Age_combine + Household_Income_combine
+ "
+
+fitmoder<-sem(model=Intmod, data=Latinx_miss, missing = "FIML", estimator = "MLR")                       
+
+summary(fitmoder,standardized=TRUE)                   
+ 
+lavaanPlot(model=fitmoder,stand=TRUE, 
+           node_options = list(shape="box",fontname="Helvetica",fontsize="12"),
+           edge_options = list(color="black"),
+           graph_options = list(rankdir = "LR"),
+           coefs=TRUE, 
+           covs=FALSE,
+           stars=c("regress")) 
+
+probe<-probe2WayMC(fitmoder, c("latent_sleep", "latent_accult", "latent_int"), 
+                   "latent_depress","latent_accult", 
+                   c(-1,0, 1))
+probe
+
+plotProbe(probe,c(-2,2),xlab="Latent sleep and accult", ylab="Latent depress")  
+
+#citation("semTools")
+
+```
+
+```{r}
+library(modelsummary)
+modelsummary::modelsummary(fitmoder)
+ library(sandwich)
+ library(clubSandwich)
+omit_rows <- c(1,2,3,4,5,6,7,8,9,10,11, 12,14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28)
+include_rows <- c("SEM Interaction Fit")
+modelsummary::modelsummary(list( "SEM Interaction Fit" = fitmoder),
+                            stars=T,
+              fmt=3,
+             gof_omit = c("Adj.|Log.Lik."),
+             coef_omit = omit_rows,
+              col_names = include_rows,
+                             notes = c("Notes: Table presents coefficients estimated with maximum likelihood estimation with robust standard errors (MLR). Missing values were addressed using Full Information Maximum Likelihood (FIML) estimation."))
+
+
+        # coef_rename = c("latent_depress ~ latent_sleep" = "LV Depression and LV Sleep",
+        #                      "latent_depress ~ Age_combine" = "LV Depression and Age",
+        #                      "latent_depress ~ Household_Income_combine" = "LV Depression and Household Income"),
+```
+
+
+## Fit indices for interaction model
+
+```{r}
+### Modified Fit and Rsquare
+fit_indices2<-fitMeasures(fitmoder,c("chisq", "df", "pvalue", "cfi", "rmsea"))
+
+
+fit_indices2<-as.data.frame(fit_indices2)
+#View(fit_indices)
+reportfits2<- as.data.frame(t(fit_indices2)) # transpose all but the first column (name)
+
+#View(reportfits)
+
+reportfits2$chisq_df2<-(reportfits2[,c('chisq')]/reportfits2[,c('df')])
+    
+ 
+reportfits2<-as.data.frame(reportfits2)
+
+R_Square2<-lavInspect(fitmoder,"r-square")
+R_Square2<-as.data.frame(R_Square2)
+
+reportRsq2<- as.data.frame(t(R_Square2)) # transpose all but the first column (name)
+#View(reportRsq)
+# 
+# LV_Rsq<-reportRsq %>% 
+#   select(c("out3"))
+
+
+library(kableExtra)
+getOption("digits")
+
+reportfits%>%
+  kbl(col.names = c ("chisq", "df", "pvalue", "cfi", "rmsea", "chisq_df"), digits = 3) %>% 
+  kable_classic(full_width = F, html_font = "Cambria")
+
+```
+
+
+
+```{r, include=FALSE}
+## Factor score method
+library(haven)
+# 
+# latinx_df <- Latinx_miss %>%
+#   mutate(across(where(is.labelled), ~ as_factor(.)))
+
+# Assuming your_data is your dataset
+latinx_df <- Latinx_miss %>%
+  mutate(across(c(SDQ_7_combine, SDQ_8_combine, PHQ_1_combine, PHQ_2_combine, PHQ_4_combine, 
+                  PHQ_5_combine, PHQ_6_combine, PHQ_7_combine, PHQ_8_combine, PHQ_9_combine, 
+                  AMAS_AMERICANculture_1_combine, AMAS_AMERICANculture_2_combine, 
+                  AMAS_AMERICANculture_3_combine, AMAS_AMERICANculture_4_combine, 
+                  AMAS_AMERICANculture_5_combine, AMAS_AMERICANculture_6_combine), 
+                ~ as.numeric(.)))
+facscoremod <- "
+                     sleep_FAC =~ SDQ_7_combine + SDQ_8_combine 
+                  depress_FAC =~ PHQ_1_combine + PHQ_2_combine + PHQ_4_combine + PHQ_5_combine +  PHQ_6_combine + PHQ_7_combine + PHQ_8_combine + PHQ_9_combine 
+                     accult_FAC =~ AMAS_AMERICANculture_1_combine + AMAS_AMERICANculture_2_combine + AMAS_AMERICANculture_3_combine + AMAS_AMERICANculture_4_combine + AMAS_AMERICANculture_5_combine + AMAS_AMERICANculture_6_combine  
+                  "
+
+facmodfit<-cfa(model=facscoremod, data= latinx_df, missing = "FIML", estimator = "MLR")                       
+
+facscores <- predict(facmodfit)
+
+facscores<-as.data.frame(facscores) 
+
+head(facscores)
+
+# add factor scores to our main data set
+
+latinx_df$sleep_FAC<-facscores$sleep_FAC
+latinx_df$depress_FAC<-facscores$depress_FAC
+latinx_df$accult_FAC<-facscores$accult_FAC
+```
+
+```{r, include=FALSE}
+# note we also need to define a product term of the factor scores involved in the interaction
+
+latinx_df$sleepxaccult_FAC <- facscores$sleep_FAC*facscores$accult_FAC
+```
+
+
+```{r, include=FALSE}
+# now define the simple factor score model
+
+buffmoder4 <- "depress_FAC ~ sleep_FAC + accult_FAC +  sleepxaccult_FAC"
+
+fitmoder4<-sem(model=buffmoder4, data=latinx_df, missing = "FIML")                       
+
+summary(fitmoder4,standardized=TRUE)                   
+ 
+lavaanPlot(model=fitmoder4,stand=TRUE, 
+           node_options = list(shape="box",fontname="Helvetica",fontsize="12"),
+           edge_options = list(color="black"),
+           graph_options = list(rankdir = "LR"),
+           coefs=TRUE, 
+           covs=FALSE,
+           stars=c("regress")) 
+
+
+probe<-probe2WayMC(fitmoder4, c("sleep_FAC", "accult_FAC", "sleepxaccult_FAC"), 
+                   "depress_FAC", "accult_FAC",
+                   c(-1,0, 1))
+probe
+
+plotProbe(probe,c(-2,2),xlab="facscore: sleep and accult", ylab="facscore: depression") 
+    
+```
+
+
+```{r}
+# library(lavaan)
+# citation("lavaan")
+# 
+# ?citation()
+```
+
